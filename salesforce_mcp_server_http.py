@@ -106,7 +106,12 @@ def get_salesforce():
 # -------------------------------------------------
 # MCP Server & Tools
 # -------------------------------------------------
-mcp = FastMCP(name="salesforce")
+# Get host and port from environment (Render sets PORT automatically)
+port = int(os.getenv("PORT", 8000))
+host = os.getenv("HOST", "0.0.0.0")
+
+# Initialize FastMCP with host and port for HTTP/SSE transport
+mcp = FastMCP(name="salesforce", host=host, port=port)
 
 @mcp.tool()
 def get_accounts(limit: int = 5):
@@ -307,13 +312,9 @@ def create_quote_from_opportunity(opportunity_id: str) -> Dict[str, Any]:
 # Entry Point - HTTP/SSE Server
 # -------------------------------------------------
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "0.0.0.0")
-    
     print(f"Starting Salesforce MCP server on {host}:{port}...", file=sys.stderr)
     print(f"Access the server at: http://{host}:{port}", file=sys.stderr)
     
-    # Run with SSE transport for web access
-    # FastMCP supports SSE transport for web hosting
-    mcp.run(transport="sse", host=host, port=port)
+    # Run with streamable-http transport (host and port set during initialization)
+    mcp.run(transport="streamable-http")
 
