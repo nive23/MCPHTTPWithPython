@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: salesforce-mcp-server
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python salesforce_mcp_server_http.py
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: HOST
+        value: 0.0.0.0
+

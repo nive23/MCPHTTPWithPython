@@ -1,0 +1,8 @@
+simple-salesforce
+python-dotenv
+PyJWT
+cryptography
+mcp[cli]
+dnspython
+requests
+uvicorn
