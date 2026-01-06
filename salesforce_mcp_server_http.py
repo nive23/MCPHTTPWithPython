@@ -110,8 +110,9 @@ def get_salesforce():
 port = int(os.getenv("PORT", 8000))
 host = os.getenv("HOST", "0.0.0.0")
 
-# Initialize FastMCP with host and port for HTTP/SSE transport
-mcp = FastMCP(name="salesforce", host=host, port=port)
+# Initialize FastMCP - host and port must be set during initialization
+# for streamable-http transport to work
+mcp = FastMCP("salesforce", host=host, port=port)
 
 @mcp.tool()
 def get_accounts(limit: int = 5):
@@ -315,6 +316,7 @@ if __name__ == "__main__":
     print(f"Starting Salesforce MCP server on {host}:{port}...", file=sys.stderr)
     print(f"Access the server at: http://{host}:{port}", file=sys.stderr)
     
-    # Run with streamable-http transport (host and port set during initialization)
+    # Run with streamable-http transport
+    # Host and port are set during FastMCP initialization above
     mcp.run(transport="streamable-http")
 
