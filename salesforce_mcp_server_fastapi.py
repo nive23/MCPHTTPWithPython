@@ -114,8 +114,9 @@ if "\n" not in SF_PRIVATE_KEY:
 
 # Final validation and debug
 print(f"[SF DEBUG] Final private key length: {len(SF_PRIVATE_KEY)}", file=sys.stderr)
-print(f"[SF DEBUG] Final key has newlines: {'Yes' if '\n' in SF_PRIVATE_KEY else 'No'}", file=sys.stderr)
-if '\n' in SF_PRIVATE_KEY:
+has_final_newlines = '\n' in SF_PRIVATE_KEY
+print(f"[SF DEBUG] Final key has newlines: {'Yes' if has_final_newlines else 'No'}", file=sys.stderr)
+if has_final_newlines:
     key_lines = SF_PRIVATE_KEY.split('\n')[:3]
     print(f"[SF DEBUG] First 3 lines: {key_lines}", file=sys.stderr)
 
@@ -182,10 +183,12 @@ def get_salesforce():
             
             print(f"[SF] Private key length: {len(SF_PRIVATE_KEY)}", file=sys.stderr)
             print(f"[SF] Private key starts with: {SF_PRIVATE_KEY[:50]}...", file=sys.stderr)
-            print(f"[SF] Private key has newlines: {'Yes' if '\\n' in SF_PRIVATE_KEY else 'No'}", file=sys.stderr)
+            has_key_newlines = '\n' in SF_PRIVATE_KEY
+            print(f"[SF] Private key has newlines: {'Yes' if has_key_newlines else 'No'}", file=sys.stderr)
             # Show first few lines for debugging
-            key_lines = SF_PRIVATE_KEY.split('\n')[:3]
-            print(f"[SF] First 3 lines: {key_lines}", file=sys.stderr)
+            if has_key_newlines:
+                key_lines = SF_PRIVATE_KEY.split('\n')[:3]
+                print(f"[SF] First 3 lines: {key_lines}", file=sys.stderr)
             
             assertion = jwt.encode(payload, SF_PRIVATE_KEY, algorithm="RS256")
             
