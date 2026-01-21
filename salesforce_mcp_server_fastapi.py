@@ -65,8 +65,10 @@ if not SF_PRIVATE_KEY_RAW:
 # Debug: Log raw key info (without exposing full key)
 print(f"[SF DEBUG] Raw private key length: {len(SF_PRIVATE_KEY_RAW)}", file=sys.stderr)
 print(f"[SF DEBUG] Raw key starts with: {SF_PRIVATE_KEY_RAW[:50]}", file=sys.stderr)
-print(f"[SF DEBUG] Raw key contains '\\n': {'Yes' if '\\n' in SF_PRIVATE_KEY_RAW else 'No'}", file=sys.stderr)
-print(f"[SF DEBUG] Raw key contains actual newline: {'Yes' if '\n' in SF_PRIVATE_KEY_RAW else 'No'}", file=sys.stderr)
+has_literal_newline = '\\n' in SF_PRIVATE_KEY_RAW
+has_actual_newline = '\n' in SF_PRIVATE_KEY_RAW
+print(f"[SF DEBUG] Raw key contains '\\n': {'Yes' if has_literal_newline else 'No'}", file=sys.stderr)
+print(f"[SF DEBUG] Raw key contains actual newline: {'Yes' if has_actual_newline else 'No'}", file=sys.stderr)
 
 # Fix private key formatting - Azure may strip newlines or store \n as literal
 # Try multiple methods to restore proper PEM format
