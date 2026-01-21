@@ -82,6 +82,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"[REQUEST] {request.method} {request.url.path}", file=sys.stderr)
+    response = await call_next(request)
+    print(f"[RESPONSE] {request.method} {request.url.path} -> {response.status_code}", file=sys.stderr)
+    return response
+
 # -------------------------------------------------
 # Salesforce Client
 # -------------------------------------------------
@@ -170,16 +178,62 @@ async def sse_endpoint(request: Request):
         }
     )
 
+@app.post("/register")
+async def register():
+    """MCP server registration endpoint"""
+    print("[MCP] Register endpoint called", file=sys.stderr)
+    return {
+        "status": "registered",
+        "server": "salesforce-azure",
+        "version": "1.0.0"
+    }
+
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource():
+    """OAuth protected resource discovery"""
+    print("[MCP] OAuth protected resource endpoint called", file=sys.stderr)
+    return {
+        "resource": "salesforce-azure",
+        "scopes_supported": []
+    }
+
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server():
+    """OAuth authorization server discovery"""
+    print("[MCP] OAuth authorization server endpoint called", file=sys.stderr)
+    return {
+        "issuer": "salesforce-azure",
+        "authorization_endpoint": None,
+        "token_endpoint": None
+    }
+
 @app.post("/")
+@app.post("")
 async def mcp_request(request: Request):
     """Handle MCP protocol requests"""
+    print(f"[MCP] POST / received", file=sys.stderr)
     try:
-        body = await request.json()
+        # Try to get JSON body
+        try:
+            body = await request.json()
+        except Exception as json_error:
+            print(f"[MCP ERROR] Failed to parse JSON: {json_error}", file=sys.stderr)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error"
+                    }
+                }
+            )
+        
         method = body.get("method")
         params = body.get("params", {})
         request_id = body.get("id")
         
-        print(f"[MCP] Received request: {method}", file=sys.stderr)
+        print(f"[MCP] Received request: {method} (id: {request_id})", file=sys.stderr)
         
         if method == "initialize":
             return {
@@ -299,15 +353,23 @@ async def mcp_request(request: Request):
     
     except Exception as e:
         error_msg = str(e)
+        import traceback
         print(f"[MCP ERROR] {error_msg}", file=sys.stderr)
-        return {
-            "jsonrpc": "2.0",
-            "id": body.get("id") if 'body' in locals() else None,
-            "error": {
-                "code": -32603,
-                "message": error_msg
+        traceback.print_exc(file=sys.stderr)
+        request_id = None
+        if 'body' in locals():
+            request_id = body.get("id")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,
+                    "message": error_msg
+                }
             }
-        }
+        )
 
 def create_quote_logic(opportunity_id: str) -> Dict[str, Any]:
     """Create quote logic (same as original)"""
