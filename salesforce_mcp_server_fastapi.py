@@ -62,22 +62,60 @@ if not SF_USERNAME:
 if not SF_PRIVATE_KEY_RAW:
     raise ValueError("SF_PRIVATE_KEY environment variable is required")
 
-# Fix private key formatting - Azure may strip newlines
-# Replace literal \n with actual newlines, and ensure proper PEM format
-SF_PRIVATE_KEY = SF_PRIVATE_KEY_RAW.replace("\\n", "\n")
-# If the key doesn't have newlines, try to format it
-if "-----BEGIN" not in SF_PRIVATE_KEY or "-----END" not in SF_PRIVATE_KEY:
-    print("[WARNING] Private key missing BEGIN/END markers", file=sys.stderr)
-elif "\n" not in SF_PRIVATE_KEY and "\\n" not in SF_PRIVATE_KEY_RAW:
-    # Key is all on one line, try to format it
-    # This is a fallback - ideally the key should have newlines
-    print("[WARNING] Private key appears to be on a single line", file=sys.stderr)
-    # Try to insert newlines after BEGIN and before END
-    if "-----BEGIN PRIVATE KEY-----" in SF_PRIVATE_KEY:
-        parts = SF_PRIVATE_KEY.split("-----BEGIN PRIVATE KEY-----")
-        if len(parts) == 2:
-            key_content = parts[1].split("-----END PRIVATE KEY-----")[0].strip()
-            SF_PRIVATE_KEY = f"-----BEGIN PRIVATE KEY-----\n{key_content}\n-----END PRIVATE KEY-----"
+# Debug: Log raw key info (without exposing full key)
+print(f"[SF DEBUG] Raw private key length: {len(SF_PRIVATE_KEY_RAW)}", file=sys.stderr)
+print(f"[SF DEBUG] Raw key starts with: {SF_PRIVATE_KEY_RAW[:50]}", file=sys.stderr)
+print(f"[SF DEBUG] Raw key contains '\\n': {'Yes' if '\\n' in SF_PRIVATE_KEY_RAW else 'No'}", file=sys.stderr)
+print(f"[SF DEBUG] Raw key contains actual newline: {'Yes' if '\n' in SF_PRIVATE_KEY_RAW else 'No'}", file=sys.stderr)
+
+# Fix private key formatting - Azure may strip newlines or store \n as literal
+# Try multiple methods to restore proper PEM format
+SF_PRIVATE_KEY = SF_PRIVATE_KEY_RAW
+
+# Method 1: Replace literal \n (backslash-n) with actual newlines
+if "\\n" in SF_PRIVATE_KEY:
+    print("[SF] Converting literal \\n to actual newlines", file=sys.stderr)
+    SF_PRIVATE_KEY = SF_PRIVATE_KEY.replace("\\n", "\n")
+
+# Method 2: If still no newlines, try to format it
+if "\n" not in SF_PRIVATE_KEY:
+    print("[SF] No newlines found, attempting to format key", file=sys.stderr)
+    # Check if it has BEGIN/END markers
+    if "-----BEGIN PRIVATE KEY-----" in SF_PRIVATE_KEY and "-----END PRIVATE KEY-----" in SF_PRIVATE_KEY:
+        # Extract the key content (everything between BEGIN and END)
+        begin_marker = "-----BEGIN PRIVATE KEY-----"
+        end_marker = "-----END PRIVATE KEY-----"
+        
+        # Find positions
+        begin_pos = SF_PRIVATE_KEY.find(begin_marker)
+        end_pos = SF_PRIVATE_KEY.find(end_marker)
+        
+        if begin_pos != -1 and end_pos != -1:
+            # Extract key content
+            key_start = begin_pos + len(begin_marker)
+            key_content = SF_PRIVATE_KEY[key_start:end_pos].strip()
+            
+            # Remove any remaining \n or spaces, then format properly
+            key_content = key_content.replace("\\n", "").replace(" ", "").replace("\t", "")
+            
+            # Reconstruct with proper newlines
+            SF_PRIVATE_KEY = f"{begin_marker}\n{key_content}\n{end_marker}"
+            print("[SF] Reformatted private key with newlines", file=sys.stderr)
+
+# Validate key format
+if "-----BEGIN PRIVATE KEY-----" not in SF_PRIVATE_KEY:
+    raise ValueError("Private key missing BEGIN marker")
+if "-----END PRIVATE KEY-----" not in SF_PRIVATE_KEY:
+    raise ValueError("Private key missing END marker")
+if "\n" not in SF_PRIVATE_KEY:
+    print("[WARNING] Private key still has no newlines after processing", file=sys.stderr)
+
+# Final validation and debug
+print(f"[SF DEBUG] Final private key length: {len(SF_PRIVATE_KEY)}", file=sys.stderr)
+print(f"[SF DEBUG] Final key has newlines: {'Yes' if '\n' in SF_PRIVATE_KEY else 'No'}", file=sys.stderr)
+if '\n' in SF_PRIVATE_KEY:
+    key_lines = SF_PRIVATE_KEY.split('\n')[:3]
+    print(f"[SF DEBUG] First 3 lines: {key_lines}", file=sys.stderr)
 
 # -------------------------------------------------
 # Azure Configuration
@@ -141,7 +179,11 @@ def get_salesforce():
             }
             
             print(f"[SF] Private key length: {len(SF_PRIVATE_KEY)}", file=sys.stderr)
-            print(f"[SF] Private key starts with: {SF_PRIVATE_KEY[:30]}...", file=sys.stderr)
+            print(f"[SF] Private key starts with: {SF_PRIVATE_KEY[:50]}...", file=sys.stderr)
+            print(f"[SF] Private key has newlines: {'Yes' if '\\n' in SF_PRIVATE_KEY else 'No'}", file=sys.stderr)
+            # Show first few lines for debugging
+            key_lines = SF_PRIVATE_KEY.split('\n')[:3]
+            print(f"[SF] First 3 lines: {key_lines}", file=sys.stderr)
             
             assertion = jwt.encode(payload, SF_PRIVATE_KEY, algorithm="RS256")
             
