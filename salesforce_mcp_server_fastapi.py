@@ -53,14 +53,31 @@ socket.getaddrinfo = _patched_getaddrinfo
 SF_CLIENT_ID = os.getenv("SF_CLIENT_ID")
 SF_USERNAME = os.getenv("SF_USERNAME")
 SF_LOGIN_URL = os.getenv("SF_LOGIN_URL", "https://login.salesforce.com")
-SF_PRIVATE_KEY = os.getenv("SF_PRIVATE_KEY")
+SF_PRIVATE_KEY_RAW = os.getenv("SF_PRIVATE_KEY")
 
 if not SF_CLIENT_ID:
     raise ValueError("SF_CLIENT_ID environment variable is required")
 if not SF_USERNAME:
     raise ValueError("SF_USERNAME environment variable is required")
-if not SF_PRIVATE_KEY:
+if not SF_PRIVATE_KEY_RAW:
     raise ValueError("SF_PRIVATE_KEY environment variable is required")
+
+# Fix private key formatting - Azure may strip newlines
+# Replace literal \n with actual newlines, and ensure proper PEM format
+SF_PRIVATE_KEY = SF_PRIVATE_KEY_RAW.replace("\\n", "\n")
+# If the key doesn't have newlines, try to format it
+if "-----BEGIN" not in SF_PRIVATE_KEY or "-----END" not in SF_PRIVATE_KEY:
+    print("[WARNING] Private key missing BEGIN/END markers", file=sys.stderr)
+elif "\n" not in SF_PRIVATE_KEY and "\\n" not in SF_PRIVATE_KEY_RAW:
+    # Key is all on one line, try to format it
+    # This is a fallback - ideally the key should have newlines
+    print("[WARNING] Private key appears to be on a single line", file=sys.stderr)
+    # Try to insert newlines after BEGIN and before END
+    if "-----BEGIN PRIVATE KEY-----" in SF_PRIVATE_KEY:
+        parts = SF_PRIVATE_KEY.split("-----BEGIN PRIVATE KEY-----")
+        if len(parts) == 2:
+            key_content = parts[1].split("-----END PRIVATE KEY-----")[0].strip()
+            SF_PRIVATE_KEY = f"-----BEGIN PRIVATE KEY-----\n{key_content}\n-----END PRIVATE KEY-----"
 
 # -------------------------------------------------
 # Azure Configuration
@@ -109,12 +126,23 @@ def get_salesforce():
         t = time.time()
         
         try:
+            # Validate private key format
+            if not SF_PRIVATE_KEY or len(SF_PRIVATE_KEY) < 100:
+                raise ValueError("Private key appears to be invalid or too short")
+            
+            if "-----BEGIN" not in SF_PRIVATE_KEY or "-----END" not in SF_PRIVATE_KEY:
+                raise ValueError("Private key missing PEM markers (BEGIN/END)")
+            
             payload = {
                 "iss": SF_CLIENT_ID,
                 "sub": SF_USERNAME,
                 "aud": SF_LOGIN_URL,
                 "exp": int(time.time()) + 300,
             }
+            
+            print(f"[SF] Private key length: {len(SF_PRIVATE_KEY)}", file=sys.stderr)
+            print(f"[SF] Private key starts with: {SF_PRIVATE_KEY[:30]}...", file=sys.stderr)
+            
             assertion = jwt.encode(payload, SF_PRIVATE_KEY, algorithm="RS256")
             
             resp = requests.post(
