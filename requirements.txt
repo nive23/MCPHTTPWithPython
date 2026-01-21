@@ -3,6 +3,7 @@ python-dotenv
 PyJWT
 cryptography
 mcp[cli]
+fastmcp
 dnspython
 requests
 uvicorn
