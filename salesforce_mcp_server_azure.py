@@ -70,9 +70,9 @@ if not SF_PRIVATE_KEY:
 port = int(os.getenv("PORT", 8000))
 host = os.getenv("HOST", "0.0.0.0")
 
-# Initialize FastMCP with host and port upfront
-# This is required for streamable-http transport to work properly on Azure
-mcp = FastMCP("salesforce-azure", host=host, port=port)
+# Initialize FastMCP - try without host/port in initialization
+# Pass host/port to run() instead
+mcp = FastMCP("salesforce-azure")
 
 # -------------------------------------------------
 # Salesforce Client (Cached - Auth Once)
@@ -382,11 +382,17 @@ if __name__ == "__main__":
     print(f"[Config] HOST: {host}", file=sys.stderr)
     
     # Run with streamable-http transport
-    # This is the recommended transport for Azure App Service
-    # Host and port are set during FastMCP initialization above
+    # Pass host and port to run() method instead of FastMCP initialization
+    # This might fix the 404 routing issue
     try:
-        mcp.run(transport="streamable-http")
+        mcp.run(transport="streamable-http", host=host, port=port)
     except Exception as e:
         print(f"[FATAL ERROR] Failed to start server: {e}", file=sys.stderr)
-        sys.exit(1)
+        # If streamable-http fails, try SSE transport as fallback
+        print("[INFO] Trying SSE transport as fallback...", file=sys.stderr)
+        try:
+            mcp.run(transport="sse", host=host, port=port)
+        except Exception as e2:
+            print(f"[FATAL ERROR] SSE transport also failed: {e2}", file=sys.stderr)
+            sys.exit(1)
 
