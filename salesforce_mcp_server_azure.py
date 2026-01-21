@@ -369,7 +369,7 @@ if __name__ == "__main__":
     print(f"Starting server on {host}:{port}...", file=sys.stderr)
     print(f"Server URL: http://{host}:{port}", file=sys.stderr)
     print(f"Environment: Azure App Service", file=sys.stderr)
-    print(f"Transport: streamable-http", file=sys.stderr)
+    print(f"Transport: sse (switched from streamable-http due to routing issues)", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     
     # Validate environment variables on startup
@@ -381,18 +381,19 @@ if __name__ == "__main__":
     print(f"[Config] PORT: {port}", file=sys.stderr)
     print(f"[Config] HOST: {host}", file=sys.stderr)
     
-    # Run with streamable-http transport
-    # Pass host and port to run() method instead of FastMCP initialization
-    # This might fix the 404 routing issue
+    # Run with SSE transport instead of streamable-http
+    # streamable-http is not registering routes correctly (404 errors)
+    # SSE transport should work better for Azure App Service
     try:
-        mcp.run(transport="streamable-http", host=host, port=port)
+        print("[INFO] Using SSE transport (streamable-http has routing issues)", file=sys.stderr)
+        mcp.run(transport="sse", host=host, port=port)
     except Exception as e:
-        print(f"[FATAL ERROR] Failed to start server: {e}", file=sys.stderr)
-        # If streamable-http fails, try SSE transport as fallback
-        print("[INFO] Trying SSE transport as fallback...", file=sys.stderr)
+        print(f"[FATAL ERROR] Failed to start server with SSE transport: {e}", file=sys.stderr)
+        # Fallback to streamable-http if SSE fails
+        print("[INFO] Trying streamable-http transport as fallback...", file=sys.stderr)
         try:
-            mcp.run(transport="sse", host=host, port=port)
+            mcp.run(transport="streamable-http", host=host, port=port)
         except Exception as e2:
-            print(f"[FATAL ERROR] SSE transport also failed: {e2}", file=sys.stderr)
+            print(f"[FATAL ERROR] Both transports failed: {e2}", file=sys.stderr)
             sys.exit(1)
 
