@@ -7,3 +7,4 @@ fastmcp
 dnspython
 requests
 uvicorn
+fastapi
