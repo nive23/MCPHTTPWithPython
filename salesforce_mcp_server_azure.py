@@ -70,9 +70,9 @@ if not SF_PRIVATE_KEY:
 port = int(os.getenv("PORT", 8000))
 host = os.getenv("HOST", "0.0.0.0")
 
-# Initialize FastMCP - try without host/port in initialization
-# Pass host/port to run() instead
-mcp = FastMCP("salesforce-azure")
+# Initialize FastMCP with host and port
+# FastMCP.run() doesn't accept host/port arguments, they must be set during initialization
+mcp = FastMCP("salesforce-azure", host=host, port=port)
 
 # -------------------------------------------------
 # Salesforce Client (Cached - Auth Once)
@@ -369,7 +369,7 @@ if __name__ == "__main__":
     print(f"Starting server on {host}:{port}...", file=sys.stderr)
     print(f"Server URL: http://{host}:{port}", file=sys.stderr)
     print(f"Environment: Azure App Service", file=sys.stderr)
-    print(f"Transport: sse (switched from streamable-http due to routing issues)", file=sys.stderr)
+    print(f"Transport: sse (will try SSE first, fallback to streamable-http)", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     
     # Validate environment variables on startup
@@ -384,15 +384,16 @@ if __name__ == "__main__":
     # Run with SSE transport instead of streamable-http
     # streamable-http is not registering routes correctly (404 errors)
     # SSE transport should work better for Azure App Service
+    # Note: host and port are set during FastMCP initialization, not in run()
     try:
         print("[INFO] Using SSE transport (streamable-http has routing issues)", file=sys.stderr)
-        mcp.run(transport="sse", host=host, port=port)
+        mcp.run(transport="sse")
     except Exception as e:
         print(f"[FATAL ERROR] Failed to start server with SSE transport: {e}", file=sys.stderr)
         # Fallback to streamable-http if SSE fails
         print("[INFO] Trying streamable-http transport as fallback...", file=sys.stderr)
         try:
-            mcp.run(transport="streamable-http", host=host, port=port)
+            mcp.run(transport="streamable-http")
         except Exception as e2:
             print(f"[FATAL ERROR] Both transports failed: {e2}", file=sys.stderr)
             sys.exit(1)
