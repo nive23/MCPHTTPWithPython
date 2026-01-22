@@ -223,25 +223,44 @@ def get_salesforce():
 
 @app.get("/")
 async def root():
-    """Root endpoint - Health check"""
+    """Root endpoint - Health check and transport info"""
     return {
         "status": "ok",
         "server": "salesforce-azure",
         "version": "1.0.0",
-        "protocol": "MCP"
+        "protocol": "MCP",
+        "transport": "SSE",
+        "sse_endpoint": "/sse",
+        "message_endpoint": "POST /",
+        "boomi_compatible": True
     }
 
 @app.get("/sse")
 async def sse_endpoint(request: Request):
-    """SSE endpoint for MCP protocol"""
+    """
+    SSE (Server-Sent Events) endpoint for MCP protocol
+    This is the primary transport endpoint for Boomi integration
+    """
+    print("[MCP] SSE connection established", file=sys.stderr)
+    
     async def event_stream():
-        # Send initial connection message
-        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
+        # Send initial connection message in MCP format
+        init_message = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        }
+        yield f"data: {json.dumps(init_message)}\n\n"
         
-        # Keep connection alive
+        # Keep connection alive with periodic pings
         while True:
             await asyncio.sleep(30)
-            yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+            ping_message = {
+                "jsonrpc": "2.0",
+                "method": "ping",
+                "params": {}
+            }
+            yield f"data: {json.dumps(ping_message)}\n\n"
     
     return StreamingResponse(
         event_stream(),
@@ -249,7 +268,9 @@ async def sse_endpoint(request: Request):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*"
         }
     )
 
@@ -262,6 +283,130 @@ async def register():
         "server": "salesforce-azure",
         "version": "1.0.0"
     }
+
+# -------------------------------------------------
+# Boomi REST API Endpoints (REST wrapper for MCP tools)
+# -------------------------------------------------
+
+@app.post("/ws/rest/Generate_Quote/V1")
+@app.get("/ws/rest/Generate_Quote/V1")
+async def boomi_generate_quote(request: Request):
+    """
+    Boomi REST API endpoint for Generate Quote
+    Wraps the MCP create_quote_from_opportunity tool
+    """
+    print("[Boomi] Generate_Quote endpoint called", file=sys.stderr)
+    try:
+        # Get request body (Boomi might send JSON or form data)
+        try:
+            if request.method == "POST":
+                body = await request.json()
+            else:
+                # GET request - get params from query string
+                body = dict(request.query_params)
+        except:
+            # Try form data
+            form = await request.form()
+            body = dict(form)
+        
+        # Extract opportunity_id from various possible formats
+        opportunity_id = (
+            body.get("opportunity_id") or 
+            body.get("opportunityId") or 
+            body.get("OpportunityId") or
+            body.get("opportunity") or
+            body.get("id")
+        )
+        
+        if not opportunity_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Missing required parameter: opportunity_id",
+                    "message": "Please provide opportunity_id in the request"
+                }
+            )
+        
+        print(f"[Boomi] Creating quote for opportunity: {opportunity_id}", file=sys.stderr)
+        
+        # Call the MCP tool logic
+        result = create_quote_logic(opportunity_id)
+        
+        # Return in REST API format (not MCP format)
+        if result.get("errorMessage"):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": result["errorMessage"],
+                    "success": False
+                }
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": result
+            }
+        )
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[Boomi ERROR] {error_msg}", file=sys.stderr)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": error_msg,
+                "success": False
+            }
+        )
+
+@app.get("/ws/rest/Get_Accounts/V1")
+@app.post("/ws/rest/Get_Accounts/V1")
+async def boomi_get_accounts(request: Request):
+    """
+    Boomi REST API endpoint for Get Accounts
+    Wraps the MCP get_accounts tool
+    """
+    print("[Boomi] Get_Accounts endpoint called", file=sys.stderr)
+    try:
+        # Get limit from query params or body
+        try:
+            if request.method == "POST":
+                body = await request.json()
+            else:
+                body = dict(request.query_params)
+        except:
+            body = {}
+        
+        limit = int(body.get("limit", body.get("Limit", 5)))
+        if limit < 1 or limit > 100:
+            limit = 5
+        
+        print(f"[Boomi] Fetching {limit} accounts...", file=sys.stderr)
+        sf = get_salesforce()
+        result = sf.query(f"SELECT Id, Name FROM Account LIMIT {limit}")
+        accounts = result.get("records", [])
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": accounts,
+                "count": len(accounts)
+            }
+        )
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[Boomi ERROR] {error_msg}", file=sys.stderr)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": error_msg,
+                "success": False
+            }
+        )
 
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource():
@@ -554,6 +699,9 @@ if __name__ == "__main__":
     print(f"Server URL: http://{host}:{port}", file=sys.stderr)
     print(f"Environment: Azure App Service", file=sys.stderr)
     print(f"Framework: FastAPI with MCP protocol", file=sys.stderr)
+    print(f"Transport: SSE (Server-Sent Events) - Primary endpoint: /sse", file=sys.stderr)
+    print(f"Transport: HTTP JSON-RPC - Fallback endpoint: POST /", file=sys.stderr)
+    print(f"Boomi Compatible: SSE transport supported", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     
     print("[Config] Validating environment variables...", file=sys.stderr)
